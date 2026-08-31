@@ -1,0 +1,120 @@
+"""
+Ingestion CLI: load raw documents -> chunk -> embed -> write to Postgres.
+
+Run with: `python -m backend.app.ingestion.ingest` (or `make ingest`).
+Safe to re-run: it wipes and reloads all three tables (documents,
+parent_chunks, child_chunks) each time, so ingestion is idempotent and you
+can freely edit data/raw_docs/** and re-ingest.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+from backend.app.config import get_settings
+from backend.app.db import get_connection
+from backend.app.ingestion.loader import load_documents, tag_country
+from backend.app.rag.chunking import chunk_child, chunk_parent
+from backend.app.rag.embeddings import get_embedding_provider
+from backend.app.rag.vector_store import insert_child_chunk, insert_document, insert_parent_chunk
+
+
+def reset_tables(conn) -> None:
+    conn.execute("TRUNCATE documents, parent_chunks, child_chunks CASCADE")
+
+
+def ingest() -> None:
+    settings = get_settings()
+    embedding_provider = get_embedding_provider(settings)
+    embedding_model_label = f"{settings.embedding_provider}:{embedding_provider.model_name}"
+
+    documents = load_documents()
+    print(f"found {len(documents)} raw documents in data/raw_docs/")
+
+    with get_connection() as conn:
+        reset_tables(conn)
+
+        total_parent_chunks = 0
+        total_child_chunks = 0
+
+        for doc in documents:
+            doc_id = uuid.uuid4()
+            insert_document(
+                conn,
+                doc_id=doc_id,
+                source_path=doc.source_path,
+                title=doc.title,
+                category=doc.category,
+                department=None,
+                country=None,  # document-level country left null; see tag_country() for per-chunk tagging
+                effective_date=doc.effective_date,
+                raw_text=doc.raw_text,
+                metadata={},
+            )
+
+            parent_chunks = chunk_parent(
+                doc.raw_text,
+                max_chars=settings.parent_chunk_max_chars,
+                overlap=settings.parent_chunk_overlap,
+            )
+
+            for parent in parent_chunks:
+                parent_id = uuid.uuid4()
+                parent_country = tag_country(parent.content)
+                parent_metadata = {"country": parent_country} if parent_country else {}
+
+                insert_parent_chunk(
+                    conn,
+                    chunk_id=parent_id,
+                    document_id=doc_id,
+                    chunk_index=parent.chunk_index,
+                    content=parent.content,
+                    char_start=parent.char_start,
+                    char_end=parent.char_end,
+                    token_count=parent.token_count,
+                    metadata=parent_metadata,
+                )
+                total_parent_chunks += 1
+
+                children = chunk_child(
+                    parent.content,
+                    max_chars=settings.child_chunk_max_chars,
+                    overlap=settings.child_chunk_overlap,
+                )
+                if not children:
+                    continue
+
+                # Batch-embed all children of this parent in one call per
+                # document section, rather than one API call per chunk.
+                child_texts = [c.content for c in children]
+                child_embeddings = embedding_provider.embed_documents(child_texts)
+
+                for child, embedding in zip(children, child_embeddings):
+                    insert_child_chunk(
+                        conn,
+                        chunk_id=uuid.uuid4(),
+                        parent_chunk_id=parent_id,
+                        document_id=doc_id,
+                        chunk_index=child.chunk_index,
+                        content=child.content,
+                        char_start=child.char_start,
+                        char_end=child.char_end,
+                        token_count=child.token_count,
+                        embedding=embedding,
+                        embedding_model=embedding_model_label,
+                        metadata=parent_metadata,  # child inherits the parent's country tag
+                    )
+                    total_child_chunks += 1
+
+            print(f"  ingested {doc.source_path}: {len(parent_chunks)} parent chunks")
+
+        conn.commit()
+
+    print(
+        f"done: {len(documents)} documents, {total_parent_chunks} parent chunks, "
+        f"{total_child_chunks} child chunks (embedding dims={embedding_provider.dims})"
+    )
+
+
+if __name__ == "__main__":
+    ingest()

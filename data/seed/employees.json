@@ -1,0 +1,92 @@
+[
+  {
+    "employee_id": "E1001",
+    "name": "Priya Sharma",
+    "email": "priya.sharma@acmeglobal.com",
+    "country": "IN",
+    "department": "Engineering",
+    "manager_id": "E1010",
+    "hire_date": "2023-03-15",
+    "tenure_months": 41,
+    "employment_type": "full_time",
+    "vacation_days_total": 20,
+    "vacation_days_used": 6,
+    "vacation_days_available": 14,
+    "benefits": {
+      "health_plan": "Premium",
+      "dependents_covered": 1
+    }
+  },
+  {
+    "employee_id": "E1002",
+    "name": "James Whitfield",
+    "email": "james.whitfield@acmeglobal.com",
+    "country": "US",
+    "department": "Sales",
+    "manager_id": "E1011",
+    "hire_date": "2021-06-01",
+    "tenure_months": 62,
+    "employment_type": "full_time",
+    "vacation_days_total": 25,
+    "vacation_days_used": 10,
+    "vacation_days_available": 15,
+    "benefits": {
+      "health_plan": "Standard",
+      "dependents_covered": 3
+    }
+  },
+  {
+    "employee_id": "E1003",
+    "name": "Wei Chen",
+    "email": "wei.chen@acmeglobal.com",
+    "country": "IN",
+    "department": "Engineering",
+    "manager_id": "E1010",
+    "hire_date": "2026-05-01",
+    "tenure_months": 3,
+    "employment_type": "full_time",
+    "vacation_days_total": 15,
+    "vacation_days_used": 1,
+    "vacation_days_available": 14,
+    "benefits": {
+      "health_plan": "Standard",
+      "dependents_covered": 0
+    }
+  },
+  {
+    "employee_id": "E1004",
+    "name": "Fatima Al-Sayed",
+    "email": "fatima.alsayed@acmeglobal.com",
+    "country": "GB",
+    "department": "Marketing",
+    "manager_id": "E1012",
+    "hire_date": "2020-01-10",
+    "tenure_months": 79,
+    "employment_type": "full_time",
+    "vacation_days_total": 25,
+    "vacation_days_used": 18,
+    "vacation_days_available": 7,
+    "benefits": {
+      "health_plan": "Premium",
+      "dependents_covered": 2
+    }
+  },
+  {
+    "employee_id": "E1005",
+    "name": "Diego Alvarez",
+    "email": "diego.alvarez@acmeglobal.com",
+    "country": "US",
+    "department": "IT",
+    "manager_id": "E1013",
+    "hire_date": "2024-09-20",
+    "tenure_months": 23,
+    "employment_type": "part_time",
+    "vacation_days_total": 10,
+    "vacation_days_used": 2,
+    "vacation_days_available": 8,
+    "benefits": {
+      "health_plan": "Basic",
+      "dependents_covered": 0
+    }
+  }
+]

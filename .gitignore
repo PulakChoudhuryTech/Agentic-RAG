@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+mocks/servicenow/tickets.db
+eval/results/*.json
+!eval/results/.gitkeep
+.DS_Store
+*.log
+
+# Real personal documents (bills, insurance, tickets) -- your own PII, never
+# meant to be committed. See data/raw_docs/personal/README.md.
+data/raw_docs/personal/*.pdf

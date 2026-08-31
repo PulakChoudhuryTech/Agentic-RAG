@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agentic_rag_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ragadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ragpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-agentic_rag}
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ragadmin} -d ${POSTGRES_DB:-agentic_rag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  workday_mock:
+    build:
+      context: .
+      dockerfile: mocks/workday/Dockerfile
+    container_name: agentic_rag_workday_mock
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+
+  servicenow_mock:
+    build:
+      context: .
+      dockerfile: mocks/servicenow/Dockerfile
+    container_name: agentic_rag_servicenow_mock
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    volumes:
+      - servicenow_data:/app/mocks/servicenow/data
+
+  # Optional convenience services. The primary recommended dev workflow (see README)
+  # is to run these two locally via `uvicorn`/`streamlit run` against the dockerized
+  # postgres + mocks above, so you can set breakpoints. They're included here so the
+  # whole stack can also be brought up with a single `docker compose up`.
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: agentic_rag_backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ragadmin}:${POSTGRES_PASSWORD:-ragpassword}@postgres:5432/${POSTGRES_DB:-agentic_rag}
+      WORKDAY_API_URL: http://workday_mock:8001
+      SERVICENOW_API_URL: http://servicenow_mock:8002
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      workday_mock:
+        condition: service_started
+      servicenow_mock:
+        condition: service_started
+    profiles: ["full"]
+
+  ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: agentic_rag_ui
+    restart: unless-stopped
+    environment:
+      BACKEND_API_URL: http://backend:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    profiles: ["full"]
+
+volumes:
+  pgdata:
+  servicenow_data:
