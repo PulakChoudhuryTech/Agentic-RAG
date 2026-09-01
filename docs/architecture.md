@@ -50,7 +50,7 @@ flowchart TD
     MR --> QR{Query rewrite\nenabled?}
     QR -->|yes| QRW[LLM rewrites query]
     QR -->|no| EMB
-    QRW --> EMB[Embed query\nGemini text-embedding-004]
+    QRW --> EMB[Embed query\nGemini gemini-embedding-001]
     EMB --> HY{HyDE enabled?}
     HY -->|yes| HYP[LLM writes hypothetical answer,\nembed that instead]
     HY -->|no| QE

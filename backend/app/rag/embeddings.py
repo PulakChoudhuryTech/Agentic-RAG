@@ -6,8 +6,15 @@ embedding model"): anything implementing `embed_documents`/`embed_query`/
 `.dims` can be dropped in via EMBEDDING_PROVIDER in .env, without touching
 vector_store.py or pipeline.py.
 
-Default: Gemini's `text-embedding-004` (768 dims), called through the
-`google-genai` SDK -- the same API key as the LLM, no extra setup.
+Default: Gemini's `gemini-embedding-001`, called through the `google-genai`
+SDK -- the same API key as the LLM, no extra setup. This model natively
+outputs 3072-dim vectors (via Matryoshka Representation Learning, MRL), but
+we request `output_dimensionality=768` explicitly so the vectors match this
+project's `VECTOR(768)` column (see db/migrations/004_child_chunks.sql) --
+768 was chosen to keep parity with the older text-embedding-004 model this
+project originally targeted before Google deprecated it, not because 768 is
+special; bump EMBEDDING_DIMS in .env (and the column type) if you want the
+full 3072 dims instead.
 
 `LocalSentenceTransformerEmbedding` is a working alternative (BGE-small,
 runs fully offline after the first download) kept in the same file so the
@@ -19,9 +26,12 @@ so you can tell, per row, which model produced which vector).
 
 from __future__ import annotations
 
+import time
 from typing import Protocol
 
 from google import genai
+from google.genai.errors import ClientError
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 
 class EmbeddingProvider(Protocol):
@@ -33,33 +43,91 @@ class EmbeddingProvider(Protocol):
     def embed_query(self, text: str) -> list[float]: ...
 
 
+def _is_rate_limit_error(exc: BaseException) -> bool:
+    return isinstance(exc, ClientError) and getattr(exc, "code", None) == 429
+
+
 class GeminiEmbeddingProvider:
-    """Calls Gemini's embedding model one text at a time. For this project's
-    corpus size (a handful of documents, a few hundred chunks) that's simple
-    and fast enough; a production system would batch more aggressively."""
+    """
+    Calls Gemini's embedding model in batches (Gemini's `embed_content`
+    accepts a list of texts and returns one embedding per item in a SINGLE
+    HTTP request) rather than one request per chunk. This matters
+    concretely: the free tier's `embed_content_free_tier_requests` quota is
+    easy to blow through with a one-request-per-chunk approach on even this
+    project's small sample corpus (~150+ child chunks). Batching in groups
+    of `BATCH_SIZE` cuts that down to a handful of requests, and a minimum
+    gap enforced between requests (`MIN_SECONDS_BETWEEN_REQUESTS`) further
+    spreads them out instead of bursting them.
+
+    Every call to `_embed_batch` -- whether it's one of several batches
+    within a single `embed_documents()` call, or a totally separate call
+    for the next parent chunk (see ingestion/ingest.py, which calls
+    `embed_documents()` once per parent chunk, not once per whole
+    document) -- is throttled against a single `_last_request_time`
+    tracked on the instance, so requests stay spread out across the
+    instance's *entire* lifetime, not just within one method call.
+
+    Each batch call is also retried with patient exponential backoff
+    specifically on HTTP 429 (rate limit) responses -- other errors (bad
+    API key, model not found) are NOT retried, since retrying those would
+    just burn time before failing the same way anyway. The free tier's
+    exact reset window isn't documented precisely, so the backoff here is
+    deliberately generous (up to a few minutes total) rather than tuned to
+    a specific number -- this only runs during `make ingest`, a one-time
+    CLI operation, so a few extra minutes of patience costs nothing.
+    """
+
+    BATCH_SIZE = 10
+    MIN_SECONDS_BETWEEN_REQUESTS = 2.0
 
     def __init__(self, api_key: str, model_name: str, dims: int = 768) -> None:
         self.model_name = model_name
         self.dims = dims
         self._client = genai.Client(api_key=api_key)
+        self._last_request_time = 0.0
 
-    def _embed_one(self, text: str, task_type: str) -> list[float]:
+    def _throttle(self) -> None:
+        elapsed = time.monotonic() - self._last_request_time
+        remaining = self.MIN_SECONDS_BETWEEN_REQUESTS - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+        self._last_request_time = time.monotonic()
+
+    @retry(
+        stop=stop_after_attempt(8),
+        wait=wait_exponential(multiplier=3, min=5, max=45),
+        retry=retry_if_exception(_is_rate_limit_error),
+        reraise=True,
+    )
+    def _embed_batch(self, texts: list[str], task_type: str) -> list[list[float]]:
         response = self._client.models.embed_content(
             model=self.model_name,
-            contents=text,
-            config={"task_type": task_type},
+            contents=texts,
+            config={"task_type": task_type, "output_dimensionality": self.dims},
         )
-        return list(response.embeddings[0].values)
+        return [list(e.values) for e in response.embeddings]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         # task_type="RETRIEVAL_DOCUMENT" tells the model these vectors will be
         # searched *against* -- Gemini's embedding model uses different
         # internal weighting for documents vs. queries, so getting this right
         # measurably improves retrieval quality.
-        return [self._embed_one(t, "RETRIEVAL_DOCUMENT") for t in texts]
+        #
+        # Throttled (unlike embed_query below): this is the bulk-ingestion
+        # path, called once per parent chunk by ingestion/ingest.py, and
+        # it's the one that actually risks bursting past the free tier's
+        # rate limit. A single interactive RAG query's embed_query() call
+        # doesn't need this -- it's naturally spaced out by the rest of the
+        # pipeline and the user's own pace.
+        results: list[list[float]] = []
+        for i in range(0, len(texts), self.BATCH_SIZE):
+            self._throttle()
+            batch = texts[i : i + self.BATCH_SIZE]
+            results.extend(self._embed_batch(batch, "RETRIEVAL_DOCUMENT"))
+        return results
 
     def embed_query(self, text: str) -> list[float]:
-        return self._embed_one(text, "RETRIEVAL_QUERY")
+        return self._embed_batch([text], "RETRIEVAL_QUERY")[0]
 
 
 class LocalSentenceTransformerEmbedding:

@@ -398,11 +398,33 @@ Off by default; nothing LangSmith-related is contacted unless you enable it.
 - **Backend fails to start with a `Settings` validation error**: `.env` is
   missing a required value -- almost always `GEMINI_API_KEY`. Check
   `.env.example` for the full list of required vs. optional vars.
-- **`make ingest` is slow / hits rate limits**: it's making one Gemini
-  embedding call per document section (batched per parent chunk, not per
-  child chunk) -- with the sample doc set this is well under free-tier
-  limits, but if you add many more documents, batch further in
-  `ingestion/ingest.py`.
+- **`make ingest` is slow / hits rate limits**: `rag/embeddings.py`'s
+  `GeminiEmbeddingProvider` batches embedding calls (up to `BATCH_SIZE`
+  texts per request) and throttles itself to `MIN_SECONDS_BETWEEN_REQUESTS`
+  between requests, with patient exponential-backoff retry on HTTP 429 --
+  this is enough to get through the sample doc set on a free-tier key, but
+  if you add a lot more documents, expect ingestion to take a few minutes
+  rather than seconds (that's the throttling working as intended, not a
+  hang).
+- **`/chat` requests fail with `GoogleRateLimitError` / `429
+  RESOURCE_EXHAUSTED`, `quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier`**:
+  this is a **hard daily cap per model** on Gemini's free tier (as low as
+  ~20 `generateContent` requests/day per model on some accounts) -- not a
+  per-minute limit, and not something retries can wait out. It's easy to
+  hit: a single `/chat` request on the `combined` or `servicenow_troubleshoot`
+  route can chain 3-4+ LLM calls (supervisor routing, RAG answer,
+  tool-calling, combine), so a handful of test messages can exhaust a full
+  day's quota. `/rag/query` (one LLM call per request) and `workday`-route
+  `/chat` messages (two calls) are much cheaper to test with if you're
+  trying to conserve quota. Options: wait for the daily reset, check your
+  exact current limits at
+  [aistudio.google.com/rate-limit](https://aistudio.google.com/rate-limit),
+  or enable billing on your Google AI Studio/Cloud project for
+  substantially higher limits. `GEMINI_MODEL` defaults to
+  `gemini-2.5-flash-lite` specifically because it tends to have a more
+  workable free-tier quota than the full `gemini-2.5-flash` for this kind
+  of multi-call agentic workload -- but it's still a free-tier account cap,
+  not unlimited.
 - **`make ingest` prints `SKIPPING <file>.pdf: no usable text layer and OCR
   failed`**: that PDF has no extractable text (common for scanned documents
   or e-tickets/boarding passes) and the OCR fallback couldn't run --

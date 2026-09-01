@@ -25,8 +25,14 @@ class Settings(BaseSettings):
 
     # ---- Gemini ----
     gemini_api_key: str
-    gemini_model: str = "gemini-2.5-flash"
-    gemini_embedding_model: str = "models/text-embedding-004"
+    # gemini-2.5-flash-lite, not gemini-2.5-flash: the full flash model's
+    # free tier is easy to exhaust for this project (a multi-agent request
+    # can chain 3-4+ generateContent calls -- supervisor routing, RAG
+    # answer, tool-calling, combine); flash-lite has a separate, more
+    # workable free-tier quota bucket and is plenty capable for this
+    # project's routing/synthesis tasks.
+    gemini_model: str = "gemini-2.5-flash-lite"
+    gemini_embedding_model: str = "models/gemini-embedding-001"
 
     # ---- Embeddings ----
     embedding_provider: Literal["gemini", "local"] = "gemini"
