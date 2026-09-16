@@ -15,6 +15,12 @@ you can compare them:
 
 Also runs rule-based metadata routing (rag/metadata_router.py) so
 `metadata_filters` is available to whichever agent runs next.
+
+The route list itself (both the descriptions shown to the LLM below and
+VALID_ROUTES) comes from the skill registry (skills/registry.py), not a
+hardcoded prompt string -- see docs/concepts/skills_pattern.md. Adding a new
+route means adding a `backend/app/skills/<name>/SKILL.md`, not editing this
+file.
 """
 
 from __future__ import annotations
@@ -26,9 +32,10 @@ from backend.app.llm.prompts import SUPERVISOR_ROUTING_PROMPT
 from backend.app.rag.embeddings import get_embedding_provider
 from backend.app.rag.intent_classifier import get_intent_classifier
 from backend.app.rag.metadata_router import detect_metadata_filters
+from backend.app.skills.registry import load_skills
 from backend.app.trace.trace import new_trace_steps
 
-VALID_ROUTES = {"rag_hr", "rag_it", "rag_travel", "rag_personal", "workday", "combined", "servicenow_troubleshoot"}
+VALID_ROUTES = {skill.name for skill in load_skills()}
 
 
 def supervisor_node(state: AgentState, settings: Settings) -> dict:
@@ -53,7 +60,10 @@ def supervisor_node(state: AgentState, settings: Settings) -> dict:
             "but use your own judgment based on the full message.)\n"
         )
 
-    prompt = SUPERVISOR_ROUTING_PROMPT.format(intent_hint=intent_hint_text, query=query)
+    route_descriptions = "\n".join(f"- {skill.name}: {skill.description}" for skill in load_skills())
+    prompt = SUPERVISOR_ROUTING_PROMPT.format(
+        route_descriptions=route_descriptions, intent_hint=intent_hint_text, query=query
+    )
     raw_route = generate_text(prompt, settings).strip().lower()
     route = raw_route if raw_route in VALID_ROUTES else "rag_hr"  # safe default if the LLM returns something unexpected
 

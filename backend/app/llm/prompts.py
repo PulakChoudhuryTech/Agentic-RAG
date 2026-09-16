@@ -36,7 +36,7 @@ the employee's question using ONLY the context below. If the context does \
 not contain enough information to answer, say so plainly rather than \
 guessing. Cite sources using the bracketed [Source N] labels already \
 present in the context when you use information from them.
-
+{skill_guidance}
 Context:
 {context}
 
@@ -49,13 +49,7 @@ Employee AI Assistant. Read the employee's message and decide which single \
 route should handle it. Respond with EXACTLY ONE of these route labels, \
 nothing else:
 
-- rag_hr: questions about HR policy documents (leave, PTO, benefits, remote work) that do NOT need the employee's personal data
-- rag_it: IT questions answerable from documentation alone (how-to, troubleshooting info) where the employee is NOT asking to create/check a ticket
-- rag_travel: questions about travel policy documents
-- rag_personal: questions about the employee's own uploaded personal documents (e.g. a phone/internet bill, an insurance policy, a flight e-ticket/PNR) -- NOT company policy, and NOT Workday employee-profile data
-- workday: questions about the employee's OWN Workday HR data (their vacation balance, their benefits enrollment, their profile) with NO document lookup needed
-- combined: questions that need BOTH the employee's personal data (via Workday) AND a policy document to answer (e.g. eligibility questions that depend on the employee's own country/tenure/profile)
-- servicenow_troubleshoot: the employee wants IT troubleshooting AND/OR wants a support ticket created or checked
+{route_descriptions}
 
 {intent_hint}
 Employee's message: {query}

@@ -109,6 +109,7 @@ def run_rag_pipeline(
     settings: Settings,
     trace: Trace,
     filters: dict[str, str] | None = None,
+    skill_guidance: str = "",
 ) -> RagResult:
     trace.step("pipeline", "start", {"query": query})
 
@@ -285,7 +286,13 @@ def run_rag_pipeline(
     )
 
     # ---- 10. Gemini answer generation ----
-    prompt = RAG_ANSWER_PROMPT.format(context=context_str or "(no relevant context found)", query=query)
+    # skill_guidance is the triggered skill's SKILL.md body (see
+    # skills/registry.py, agents/rag_agent.py) -- domain-specific answer
+    # guidance folded in only for the skill that actually matched.
+    guidance_block = f"\nDomain-specific guidance:\n{skill_guidance}\n" if skill_guidance else ""
+    prompt = RAG_ANSWER_PROMPT.format(
+        context=context_str or "(no relevant context found)", query=query, skill_guidance=guidance_block
+    )
     answer = generate_text(prompt, settings)
     trace.step("llm", "answer_generated", {"answer": answer})
 

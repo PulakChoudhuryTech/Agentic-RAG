@@ -1,3 +1,9 @@
+---
+type: Runbook
+tags: [it, vpn, network]
+related: [it/password_reset_policy.md]
+stale_after: 2027-01-01
+---
 # VPN Troubleshooting Guide
 
 **Category:** IT | **Applies to:** All employees | **Effective date:** 2025-01-01

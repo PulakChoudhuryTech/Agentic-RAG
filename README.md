@@ -329,6 +329,8 @@ Each RAG concept has its own short doc under `docs/concepts/`:
 - [Cross-encoder reranking](docs/concepts/reranking.md)
 - [Parent/child retrieval](docs/concepts/parent_child_retrieval.md)
 - [HyDE](docs/concepts/hyde.md)
+- [Skills pattern](docs/concepts/skills_pattern.md) -- how domain routing/prompting is packaged as filesystem-based, progressively-loaded `SKILL.md` files
+- [OKF (Open Knowledge Format)](docs/concepts/okf.md) -- optional YAML frontmatter on raw docs for type/tags/cross-document relationships
 
 And [`docs/architecture.md`](docs/architecture.md) for the RAG pipeline and
 agent graph diagrams.

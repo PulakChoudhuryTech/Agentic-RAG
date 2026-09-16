@@ -1,3 +1,9 @@
+---
+type: Policy
+tags: [it, security, password]
+related: [it/vpn_troubleshooting.md]
+stale_after: 2027-01-01
+---
 # Password Reset Policy
 
 **Category:** IT | **Applies to:** All employees | **Effective date:** 2025-01-01

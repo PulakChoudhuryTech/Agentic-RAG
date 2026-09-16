@@ -1,3 +1,9 @@
+---
+type: Policy
+tags: [hr, leave, benefits]
+related: [hr/benefits_overview.md]
+stale_after: 2027-01-01
+---
 # Parental Leave Policy
 
 **Category:** HR | **Applies to:** All full-time employees | **Effective date:** 2025-01-01

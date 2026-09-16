@@ -42,6 +42,7 @@ from backend.app.config import Settings
 from backend.app.llm.gemini_client import generate_text, get_chat_model
 from backend.app.llm.prompts import TROUBLESHOOTING_RESOLVED_PROMPT
 from backend.app.rag.pipeline import run_rag_pipeline
+from backend.app.skills.registry import get_skill
 from backend.app.trace.trace import Trace, new_trace_steps
 
 CREATE_TICKET_SYSTEM_PROMPT = """You are the IT Support assistant. The \
@@ -58,8 +59,14 @@ def it_troubleshoot_node(state: AgentState, settings: Settings) -> dict:
     filters = dict(state.get("metadata_filters") or {})
     filters["category"] = "it"
 
+    # Same rag_it skill guidance rag_agent_node uses for the standalone
+    # rag_it route -- this node runs the identical IT-scoped RAG pipeline,
+    # just as the first turn of the troubleshoot/ticket workflow.
+    skill = get_skill("rag_it")
+    skill_guidance = skill.body if skill else ""
+
     trace = Trace(enabled=True)
-    result = run_rag_pipeline(state["user_query"], settings, trace, filters=filters)
+    result = run_rag_pipeline(state["user_query"], settings, trace, filters=filters, skill_guidance=skill_guidance)
 
     answer = (
         f"{result.answer}\n\n"

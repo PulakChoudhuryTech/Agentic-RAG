@@ -17,19 +17,31 @@ from __future__ import annotations
 
 import re
 
-CATEGORY_KEYWORDS: dict[str, list[str]] = {
-    # Checked first: these are specific enough (account/policy/booking
-    # vocabulary) that they rarely collide with the company-policy
-    # categories below, and a personal document is usually the more
-    # specific, more relevant match when they do (e.g. "insurance" alone
-    # vs. HR's more specific "health insurance" phrase).
-    "personal": ["airtel", "insurance", "premium", "pnr", "invoice", "policy no", "sum assured", "e-ticket", "boarding"],
-    "hr": ["parental", "leave", "vacation", "pto", "benefits", "health insurance", "retirement", "remote work"],
-    "it": ["vpn", "password", "laptop", "hardware", "account lockout", "reset", "ticket", "servicenow"],
-    "travel": ["travel", "flight", "hotel", "visa", "expense", "per diem", "trip"],
-}
+from backend.app.skills.registry import load_skills
+
+
+def _build_category_keywords() -> dict[str, list[str]]:
+    """CATEGORY_KEYWORDS is sourced from each skill's `keywords` (see
+    skills/registry.py) rather than hardcoded here, so adding a category
+    means adding a SKILL.md, not editing this file. Skills are sorted by
+    `match_priority` (lower = checked first) -- rag_personal sets
+    match_priority: 0 because its vocabulary (account/policy/booking terms)
+    rarely collides with the company-policy categories, and a personal
+    document is usually the more specific, more relevant match when it
+    does (e.g. "insurance" alone vs. HR's more specific "health insurance"
+    phrase)."""
+    skills = sorted(
+        (s for s in load_skills() if s.category and s.keywords),
+        key=lambda s: s.match_priority,
+    )
+    return {s.category: s.keywords for s in skills}
+
+
+CATEGORY_KEYWORDS: dict[str, list[str]] = _build_category_keywords()
 
 # ISO country codes we know how to detect by name/adjective in the query.
+# Not sourced from the skill registry: country detection is orthogonal to
+# any one domain (hr, travel, and personal docs can all be country-specific).
 COUNTRY_KEYWORDS: dict[str, str] = {
     "india": "IN",
     "indian": "IN",

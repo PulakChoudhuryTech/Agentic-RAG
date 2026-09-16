@@ -34,14 +34,25 @@ PDF text extraction, two-tier:
      installed (`brew install tesseract poppler` on macOS) -- if they're
      missing, `_ocr_pdf()` raises and `load_documents()` skips that file
      with a printed warning rather than silently ingesting empty content.
+
+Optional OKF-style frontmatter (markdown only -- see docs/concepts/okf.md):
+  A markdown file may optionally start with a YAML frontmatter block
+  (`---\\n...\\n---\\n`) carrying `type`, `tags`, `related` (paths to other
+  files under data/raw_docs/, relative to RAW_DOCS_DIR), and `stale_after`.
+  This is entirely opt-in, layered alongside the existing conventions above:
+  a file with no frontmatter loads exactly as it always has. When present,
+  the frontmatter block is stripped before the title/effective-date regexes
+  run and before the text is chunked/embedded, so it never pollutes the
+  document's raw_text or retrieval content.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
 from pypdf import PdfReader
 
 RAW_DOCS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "raw_docs"
@@ -62,6 +73,7 @@ COUNTRY_HEADING_MAP: dict[str, str] = {
 _TITLE_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 _EFFECTIVE_DATE_RE = re.compile(r"\*\*Effective date:\*\*\s*(\d{4}-\d{2}-\d{2})")
 _H3_HEADING_RE = re.compile(r"^###\s+(.+)$", re.MULTILINE)
+_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 
 @dataclass
@@ -71,12 +83,32 @@ class RawDocument:
     category: str
     effective_date: str | None
     raw_text: str
+    # Optional OKF-style fields (see docs/concepts/okf.md), populated only
+    # when the source file has a frontmatter block; empty/None otherwise.
+    doc_type: str | None = None
+    tags: list[str] = field(default_factory=list)
+    related: list[str] = field(default_factory=list)
+    stale_after: str | None = None
+
+
+def _parse_okf_frontmatter(text: str) -> tuple[dict, str]:
+    """Parse an optional OKF-style YAML frontmatter block from the start of
+    a markdown file. Returns (frontmatter_dict, remaining_body) -- ({}, text)
+    unchanged when the file has no frontmatter, which is what makes this
+    opt-in per file rather than a migration."""
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        return {}, text
+    frontmatter = yaml.safe_load(match.group(1)) or {}
+    return frontmatter, text[match.end() :]
 
 
 def _load_markdown(path: Path, category: str) -> RawDocument:
-    text = path.read_text()
+    frontmatter, text = _parse_okf_frontmatter(path.read_text())
+
     title_match = _TITLE_RE.search(text)
     date_match = _EFFECTIVE_DATE_RE.search(text)
+    stale_after = frontmatter.get("stale_after")
 
     return RawDocument(
         source_path=str(path.relative_to(RAW_DOCS_DIR)),
@@ -84,6 +116,10 @@ def _load_markdown(path: Path, category: str) -> RawDocument:
         category=category,
         effective_date=date_match.group(1) if date_match else None,
         raw_text=text,
+        doc_type=frontmatter.get("type"),
+        tags=frontmatter.get("tags") or [],
+        related=frontmatter.get("related") or [],
+        stale_after=str(stale_after) if stale_after is not None else None,
     )
 
 

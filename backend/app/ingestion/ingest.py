@@ -39,6 +39,21 @@ def ingest() -> None:
 
         for doc in documents:
             doc_id = uuid.uuid4()
+            # OKF-style fields (see docs/concepts/okf.md) land in the existing
+            # metadata JSONB column -- no schema migration needed for this
+            # additive layer. Documents without frontmatter (doc.tags/related
+            # empty, doc.doc_type/stale_after None) get metadata={}, exactly
+            # as before.
+            document_metadata = {}
+            if doc.doc_type:
+                document_metadata["type"] = doc.doc_type
+            if doc.tags:
+                document_metadata["tags"] = doc.tags
+            if doc.related:
+                document_metadata["related"] = doc.related
+            if doc.stale_after:
+                document_metadata["stale_after"] = doc.stale_after
+
             insert_document(
                 conn,
                 doc_id=doc_id,
@@ -49,7 +64,7 @@ def ingest() -> None:
                 country=None,  # document-level country left null; see tag_country() for per-chunk tagging
                 effective_date=doc.effective_date,
                 raw_text=doc.raw_text,
-                metadata={},
+                metadata=document_metadata,
             )
 
             parent_chunks = chunk_parent(
