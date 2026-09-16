@@ -90,6 +90,7 @@ class GeminiEmbeddingProvider:
         elapsed = time.monotonic() - self._last_request_time
         remaining = self.MIN_SECONDS_BETWEEN_REQUESTS - elapsed
         if remaining > 0:
+            print(f"        [embed throttle] sleeping {remaining:.1f}s (min gap={self.MIN_SECONDS_BETWEEN_REQUESTS}s)")
             time.sleep(remaining)
         self._last_request_time = time.monotonic()
 
@@ -100,12 +101,18 @@ class GeminiEmbeddingProvider:
         reraise=True,
     )
     def _embed_batch(self, texts: list[str], task_type: str) -> list[list[float]]:
+        print(
+            f"        [embed_content] model={self.model_name} task_type={task_type} "
+            f"texts={len(texts)} output_dimensionality={self.dims}"
+        )
         response = self._client.models.embed_content(
             model=self.model_name,
             contents=texts,
             config={"task_type": task_type, "output_dimensionality": self.dims},
         )
-        return [list(e.values) for e in response.embeddings]
+        vectors = [list(e.values) for e in response.embeddings]
+        print(f"        [embed_content] <- {len(vectors)} vector(s) back from Gemini")
+        return vectors
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         # task_type="RETRIEVAL_DOCUMENT" tells the model these vectors will be
@@ -127,7 +134,10 @@ class GeminiEmbeddingProvider:
         return results
 
     def embed_query(self, text: str) -> list[float]:
-        return self._embed_batch([text], "RETRIEVAL_QUERY")[0]
+        print(f"    [embed_query] embedding query text: {text[:80]!r}")
+        vector = self._embed_batch([text], "RETRIEVAL_QUERY")[0]
+        print(f"    [embed_query] -> vector: {vector[:5]} ... ({len(vector)} dims total)")
+        return vector
 
 
 class LocalSentenceTransformerEmbedding:

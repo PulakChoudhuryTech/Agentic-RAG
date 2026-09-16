@@ -30,6 +30,7 @@ def ingest() -> None:
 
     documents = load_documents()
     print(f"found {len(documents)} raw documents in data/raw_docs/")
+    print(f"embedding model: {embedding_model_label} (dims={embedding_provider.dims})")
 
     with get_connection() as conn:
         reset_tables(conn)
@@ -39,6 +40,11 @@ def ingest() -> None:
 
         for doc in documents:
             doc_id = uuid.uuid4()
+            print(f"\n{'=' * 70}")
+            print(f"DOCUMENT: {doc.source_path}")
+            print(f"  title={doc.title!r} category={doc.category} effective_date={doc.effective_date}")
+            print(f"  raw_text: {len(doc.raw_text)} chars")
+
             # OKF-style fields (see docs/concepts/okf.md) land in the existing
             # metadata JSONB column -- no schema migration needed for this
             # additive layer. Documents without frontmatter (doc.tags/related
@@ -53,6 +59,8 @@ def ingest() -> None:
                 document_metadata["related"] = doc.related
             if doc.stale_after:
                 document_metadata["stale_after"] = doc.stale_after
+            if document_metadata:
+                print(f"  OKF frontmatter: {document_metadata}")
 
             insert_document(
                 conn,
@@ -72,11 +80,21 @@ def ingest() -> None:
                 max_chars=settings.parent_chunk_max_chars,
                 overlap=settings.parent_chunk_overlap,
             )
+            print(
+                f"  CHUNK_PARENT: {len(parent_chunks)} parent chunk(s) "
+                f"(max_chars={settings.parent_chunk_max_chars}, overlap={settings.parent_chunk_overlap})"
+            )
 
             for parent in parent_chunks:
                 parent_id = uuid.uuid4()
                 parent_country = tag_country(parent.content)
                 parent_metadata = {"country": parent_country} if parent_country else {}
+
+                print(
+                    f"    parent[{parent.chunk_index}] chars={parent.char_start}-{parent.char_end} "
+                    f"({parent.token_count} tokens est.)"
+                    + (f" country={parent_country}" if parent_country else "")
+                )
 
                 insert_parent_chunk(
                     conn,
@@ -98,13 +116,26 @@ def ingest() -> None:
                 )
                 if not children:
                     continue
+                print(
+                    f"      CHUNK_CHILD: {len(children)} child chunk(s) of parent[{parent.chunk_index}] "
+                    f"(max_chars={settings.child_chunk_max_chars}, overlap={settings.child_chunk_overlap})"
+                )
 
                 # Batch-embed all children of this parent in one call per
                 # document section, rather than one API call per chunk.
                 child_texts = [c.content for c in children]
+                print(f"      EMBED: sending {len(child_texts)} text(s) to {embedding_model_label} in one batch call")
                 child_embeddings = embedding_provider.embed_documents(child_texts)
+                print(f"      EMBED: received {len(child_embeddings)} vector(s), {embedding_provider.dims} dims each")
 
                 for child, embedding in zip(children, child_embeddings):
+                    vector_preview = [round(v, 4) for v in embedding[:5]]
+                    print(
+                        f"        child[{child.chunk_index}] chars={child.char_start}-{child.char_end} "
+                        f"({child.token_count} tokens est.) content={child.content[:70]!r}..."
+                    )
+                    print(f"          embedding preview (first 5 of {len(embedding)} dims): {vector_preview}")
+
                     insert_child_chunk(
                         conn,
                         chunk_id=uuid.uuid4(),
@@ -120,8 +151,6 @@ def ingest() -> None:
                         metadata=parent_metadata,  # child inherits the parent's country tag
                     )
                     total_child_chunks += 1
-
-            print(f"  ingested {doc.source_path}: {len(parent_chunks)} parent chunks")
 
         conn.commit()
 

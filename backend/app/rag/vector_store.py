@@ -175,10 +175,13 @@ def vector_search(
     query_vector = Vector(query_embedding)
     params = [query_vector, *filter_params, query_vector, top_k]
 
+    print(f"  [vector_search] filters={filters or {}} top_k={top_k}")
+    print(f"  [vector_search] ORDER BY embedding <=> query_vector (pgvector cosine distance, ascending)")
+
     with get_connection() as conn:
         rows = conn.execute(sql, params).fetchall()
 
-    return [
+    hits = [
         VectorHit(
             child_chunk_id=row[0],
             parent_chunk_id=row[1],
@@ -189,6 +192,15 @@ def vector_search(
         )
         for row in rows
     ]
+
+    print(f"  [vector_search] {len(hits)} result(s):")
+    for rank, hit in enumerate(hits, start=1):
+        print(
+            f"    #{rank} cosine_similarity={hit.cosine_similarity:.4f} "
+            f"chunk_id={hit.child_chunk_id} content={hit.content[:80]!r}..."
+        )
+
+    return hits
 
 
 def get_document_info(conn, document_id: uuid.UUID) -> dict[str, Any] | None:
